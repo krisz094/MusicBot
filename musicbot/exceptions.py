@@ -34,11 +34,11 @@ class WrongEntryTypeError(ExtractionError):
 class PermissionsError(CommandError):
     @property
     def message(self):
-        return "You don't have permission to use that command.\nReason: " + self._message
+        return "Nincs jogosultságod ezt a parancsot használni.\nIndok: " + self._message
 
 # Error with pretty formatting for hand-holding users through various errors
 class HelpfulError(MusicbotException):
-    def __init__(self, issue, solution, *, preface="An error has occured:\n", expire_in=0):
+    def __init__(self, issue, solution, *, preface="Egy hiba történt:\n", expire_in=0):
         self.issue = issue
         self.solution = solution
         self.preface = preface
@@ -48,15 +48,15 @@ class HelpfulError(MusicbotException):
     def message(self):
         return ("\n{}\n{}\n{}\n").format(
             self.preface,
-            self._pretty_wrap(self.issue,    "  Problem:  "),
-            self._pretty_wrap(self.solution, "  Solution: "))
+            self._pretty_wrap(self.issue,    "  Probléma:  "),
+            self._pretty_wrap(self.solution, "  Megoldás: "))
 
     @property
     def message_no_format(self):
         return "\n{}\n{}\n{}\n".format(
             self.preface,
-            self._pretty_wrap(self.issue,    "  Problem:  ", width=None),
-            self._pretty_wrap(self.solution, "  Solution: ", width=None))
+            self._pretty_wrap(self.issue,    "  Probléma:  ", width=None),
+            self._pretty_wrap(self.solution, "  Megoldás: ", width=None))
 
     @staticmethod
     def _pretty_wrap(text, pretext, *, width=-1):

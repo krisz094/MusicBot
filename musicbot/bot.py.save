@@ -9,7 +9,6 @@ import discord
 import asyncio
 import traceback
 
-
 from discord import utils
 from discord.object import Object
 from discord.enums import ChannelType
@@ -22,7 +21,6 @@ from textwrap import dedent
 from datetime import timedelta
 from random import choice, shuffle
 from collections import defaultdict
-from collections import deque
 
 from musicbot.playlist import Playlist
 from musicbot.player import MusicPlayer
@@ -68,7 +66,6 @@ class Response:
 
 class MusicBot(discord.Client):
     def __init__(self, config_file=ConfigDefaults.options_file, perms_file=PermissionsDefaults.perms_file):
-        self.songQueue = deque([])
         self.players = {}
         self.the_voice_clients = {}
         self.locks = defaultdict(asyncio.Lock)
@@ -396,10 +393,10 @@ class MusicBot(discord.Client):
                     break  # This is probably redundant
 
             if self.config.now_playing_mentions:
-                newmsg = '%s - a **%s** című számod itt megy most: %s!' % (
+                newmsg = '%s - your song **%s** is now playin g in %s!' % (
                     entry.meta['author'].mention, entry.title, player.voice_client.channel.name)
             else:
-                newmsg = 'A %s nevu szobaban ez megy most: **%s**' % (
+                newmsg = 'Now playing in %s: **%s**' % (
                     player.voice_client.channel.name, entry.title)
 
             if self.server_specific_data[channel.server]['last_np_msg']:
@@ -419,25 +416,7 @@ class MusicBot(discord.Client):
     async def on_player_finished_playing(self, player, **_):
         if not player.playlist.entries and not player.current_entry and self.config.auto_playlist:
             while self.autoplaylist:
-                
-                
                 song_url = choice(self.autoplaylist)
-
-                while(song_url in self.songQueue):
-                    song_url = choice(self.autoplaylist)
-                
-                self.songQueue.append(song_url)
-
-                if len(self.songQueue) > int(len(self.autoplaylist) * 0.6):
-                    self.songQueue.popleft()
-
-                stringg = ""
-
-                for i in self.songQueue:
-                    stringg += str(i) + '\n'
-
-                self.safe_print(stringg)
-
                 info = await self.downloader.safe_extract_info(player.playlist.loop, song_url, download=False, process=False)
 
                 if not info:
@@ -891,7 +870,7 @@ class MusicBot(discord.Client):
             raise exceptions.CommandError(e, expire_in=30)
 
         if not info:
-            raise exceptions.CommandError("Ezt a videót nem lehet lejátszani.", expire_in=30)
+            raise exceptions.CommandError("That video cannot be played.", expire_in=30)
 
         # abstract the search handling away from the user
         # our ytdl options allow us to use search strings as input urls
@@ -909,8 +888,8 @@ class MusicBot(discord.Client):
 
             if not info:
                 raise exceptions.CommandError(
-                    "A kereső kifejezésre nem adott vissza eredményt a letöltő modul.  "
-                    "Ha ez sokszor megtörténik, lehet hogy újra kell indítani (.restart) a botot.", expire_in=30
+                    "Error extracting info from search string, youtubedl returned no data.  "
+                    "You may need to restart the bot if this continues to happen.", expire_in=30
                 )
 
             if not all(info.get('entries', [])):
@@ -935,7 +914,7 @@ class MusicBot(discord.Client):
 
             if permissions.max_playlist_length and num_songs > permissions.max_playlist_length:
                 raise exceptions.PermissionsError(
-                    "A lejátszási listának túl sok bejegyzése van (%s > %s)" % (num_songs, permissions.max_playlist_length),
+                    "Playlist has too many entries (%s > %s)" % (num_songs, permissions.max_playlist_length),
                     expire_in=30
                 )
 
@@ -1013,13 +992,13 @@ class MusicBot(discord.Client):
                     expire_in=30
                 )
 
-            reply_text = "**%s** darab szam hozzáadva a listahoz. Pozíció a listában: %s"
+            reply_text = "Enqueued **%s** songs to be played. Position in queue: %s"
             btext = str(listlen - drop_count)
 
         else:
             if permissions.max_song_length and info.get('duration', 0) > permissions.max_song_length:
                 raise exceptions.PermissionsError(
-                    "Szám hossza meghaladja a korlátot (%s perc > %s perc)" % (info['duration']/60, permissions.max_song_length/60),
+                    "Song duration exceeds limit (%s > %s)" % (info['duration'], permissions.max_song_length),
                     expire_in=30
                 )
 
@@ -1036,17 +1015,17 @@ class MusicBot(discord.Client):
 
                 return await self.cmd_play(player, channel, author, permissions, leftover_args, e.use_url)
 
-            reply_text = "**%s** hozzáadva a listához. Pozíció a listában: %s"
+            reply_text = "Enqueued **%s** to be played. Position in queue: %s"
             btext = entry.title
 
         if position == 1 and player.is_stopped:
-            position = 'A következő!'
+            position = 'Up next!'
             reply_text %= (btext, position)
 
         else:
             try:
                 time_until = await player.playlist.estimate_time_until(position, player)
-                reply_text += ' - ennyi idő múlva jön: %s'
+                reply_text += ' - estimated time until playing: %s'
             except:
                 traceback.print_exc()
                 time_until = ''
@@ -1064,13 +1043,13 @@ class MusicBot(discord.Client):
         info = await self.downloader.extract_info(player.playlist.loop, playlist_url, download=False, process=False)
 
         if not info:
-            raise exceptions.CommandError("A lejátszási listát nem lehet lejátszani.")
+            raise exceptions.CommandError("That playlist cannot be played.")
 
         num_songs = sum(1 for _ in info['entries'])
         t0 = time.time()
 
         busymsg = await self.safe_send_message(
-            channel, "%s szám feldolgozása..." % num_songs)  # TODO: From playlist_title
+            channel, "Processing %s songs..." % num_songs)  # TODO: From playlist_title
         await self.send_typing(channel)
 
         entries_added = 0
@@ -1222,7 +1201,7 @@ class MusicBot(discord.Client):
 
         search_query = '%s%s:%s' % (services[service], items_requested, ' '.join(leftover_args))
 
-        search_msg = await self.send_message(channel, "Videók keresése...")
+        search_msg = await self.send_message(channel, "Searching for videos...")
         await self.send_typing(channel)
 
         try:
@@ -1245,16 +1224,16 @@ class MusicBot(discord.Client):
                 m.content.lower().startswith('exit'))
 
         for e in info['entries']:
-            result_message = await self.safe_send_message(channel, "Találat %s/%s: %s" % (
+            result_message = await self.safe_send_message(channel, "Result %s/%s: %s" % (
                 info['entries'].index(e) + 1, len(info['entries']), e['webpage_url']))
 
-            confirm_message = await self.safe_send_message(channel, "Ezt keresed? Írj `y`-t, `n`-t vagy `exit`et")
+            confirm_message = await self.safe_send_message(channel, "Is this ok? Type `y`, `n` or `exit`")
             response_message = await self.wait_for_message(30, author=author, channel=channel, check=check)
 
             if not response_message:
                 await self.safe_delete_message(result_message)
                 await self.safe_delete_message(confirm_message)
-                return Response("Akkor mindegy.", delete_after=30)
+                return Response("Ok nevermind.", delete_after=30)
 
             # They started a new search query so lets clean up and bugger off
             elif response_message.content.startswith(self.config.command_prefix) or \
@@ -1271,13 +1250,13 @@ class MusicBot(discord.Client):
 
                 await self.cmd_play(player, channel, author, permissions, [], e['webpage_url'])
 
-                return Response("Rendben, nemsoká következik!", delete_after=30)
+                return Response("Alright, coming right up!", delete_after=30)
             else:
                 await self.safe_delete_message(result_message)
                 await self.safe_delete_message(confirm_message)
                 await self.safe_delete_message(response_message)
 
-        return Response("Bocsánat :frowning:", delete_after=30)
+        return Response("Oh well :frowning:", delete_after=30)
 
     async def cmd_np(self, player, channel, server, message):
         """
@@ -1297,16 +1276,16 @@ class MusicBot(discord.Client):
             prog_str = '`[%s/%s]`' % (song_progress, song_total)
 
             if player.current_entry.meta.get('channel', False) and player.current_entry.meta.get('author', False):
-                np_text = "Most megy: **%s** hozzáadta **%s** %s\n" % (
+                np_text = "Now Playing: **%s** added by **%s** %s\n" % (
                     player.current_entry.title, player.current_entry.meta['author'].name, prog_str)
             else:
-                np_text = "Most megy: **%s** %s\n" % (player.current_entry.title, prog_str)
+                np_text = "Now Playing: **%s** %s\n" % (player.current_entry.title, prog_str)
 
             self.server_specific_data[server]['last_np_msg'] = await self.safe_send_message(channel, np_text)
             await self._manual_delete_check(message)
         else:
             return Response(
-                'Nincsenek zenék a lejátszási listában! Adj hozzá valamit a {}play paranccsal.'.format(self.config.command_prefix),
+                'There are no songs queued! Queue something with {}play.'.format(self.config.command_prefix),
                 delete_after=30
             )
 
@@ -1421,16 +1400,16 @@ class MusicBot(discord.Client):
         """
 
         if player.is_stopped:
-            raise exceptions.CommandError("Nem lehet átugrani! Nem megy épp semmi a lejátszóban!", expire_in=20)
+            raise exceptions.CommandError("Can't skip! The player is not playing!", expire_in=20)
 
         if not player.current_entry:
             if player.playlist.peek():
                 if player.playlist.peek()._is_downloading:
                     # print(player.playlist.peek()._waiting_futures[0].__dict__)
-                    return Response("A következő szám (%s) épp töltődik le, kérlek várj." % player.playlist.peek().title)
+                    return Response("The next song (%s) is downloading, please wait." % player.playlist.peek().title)
 
                 elif player.playlist.peek().is_downloaded:
-                    print("A következő szám nemsoká elindul. Kérlek várj.")
+                    print("The next song will be played shortly.  Please wait.")
                 else:
                     print("Something odd is happening.  "
                           "You might want to restart the bot if it doesn't start working.")
@@ -1460,10 +1439,10 @@ class MusicBot(discord.Client):
         if skips_remaining <= 0:
             player.skip()  # check autopause stuff here
             return Response(
-                'arra szavazott, hogy a(z) **{}** című szám át legyen ugorva.'
-                '\nA szám átugrását megszavazták.{}'.format(
+                'your skip for **{}** was acknowledged.'
+                '\nThe vote to skip has been passed.{}'.format(
                     player.current_entry.title,
-                    ' A következő szám jön!' if player.playlist.peek() else ''
+                    ' Next song coming up!' if player.playlist.peek() else ''
                 ),
                 reply=True,
                 delete_after=20
@@ -1472,10 +1451,11 @@ class MusicBot(discord.Client):
         else:
             # TODO: When a song gets skipped, delete the old x needed to skip messages
             return Response(
-                'arra szavazott, hogy a **{}** című szám át legyen ugorva.'
-                '\n**{}** darab szavazat kell még, hogy a szám át legyen ugorva.'.format(
+                'your skip for **{}** was acknowledged.'
+                '\n**{}** more {} required to vote to skip this song.'.format(
                     player.current_entry.title,
-                    skips_remaining
+                    skips_remaining,
+                    'person is' if skips_remaining == 1 else 'people are'
                 ),
                 reply=True,
                 delete_after=20
@@ -1491,7 +1471,7 @@ class MusicBot(discord.Client):
         """
 
         if not new_volume:
-            return Response('Jelenlegi hangerő: `%s%%`' % int(player.volume * 100), reply=True, delete_after=20)
+            return Response('Current volume: `%s%%`' % int(player.volume * 100), reply=True, delete_after=20)
 
         relative = False
         if new_volume[0] in '+-':
@@ -1501,7 +1481,7 @@ class MusicBot(discord.Client):
             new_volume = int(new_volume)
 
         except ValueError:
-            raise exceptions.CommandError('{} nem elfogadott szám'.format(new_volume), expire_in=20)
+            raise exceptions.CommandError('{} is not a valid number'.format(new_volume), expire_in=20)
 
         if relative:
             vol_change = new_volume
@@ -1512,7 +1492,7 @@ class MusicBot(discord.Client):
         if 0 < new_volume <= 100:
             player.volume = new_volume / 100.0
 
-            return Response('a hangerő ennyiről: %d ennyire: %d változott' % (old_volume, new_volume), reply=True, delete_after=20)
+            return Response('updated volume from %d to %d' % (old_volume, new_volume), reply=True, delete_after=20)
 
         else:
             if relative:
@@ -1533,7 +1513,7 @@ class MusicBot(discord.Client):
 
         lines = []
         unlisted = 0
-        andmoretext = '* ... és még %s darab*' % ('x' * len(player.playlist.entries))
+        andmoretext = '* ... and %s more*' % ('x' * len(player.playlist.entries))
 
         if player.current_entry:
             song_progress = str(timedelta(seconds=player.progress)).lstrip('0').lstrip(':')
@@ -1541,14 +1521,14 @@ class MusicBot(discord.Client):
             prog_str = '`[%s/%s]`' % (song_progress, song_total)
 
             if player.current_entry.meta.get('channel', False) and player.current_entry.meta.get('author', False):
-                lines.append("Most megy: **%s** hozzáadta **%s** %s\n" % (
+                lines.append("Now Playing: **%s** added by **%s** %s\n" % (
                     player.current_entry.title, player.current_entry.meta['author'].name, prog_str))
             else:
-                lines.append("Most megy: **%s** %s\n" % (player.current_entry.title, prog_str))
+                lines.append("Now Playing: **%s** %s\n" % (player.current_entry.title, prog_str))
 
         for i, item in enumerate(player.playlist, 1):
             if item.meta.get('channel', False) and item.meta.get('author', False):
-                nextline = '`{}.` **{}** hozzáadta **{}**'.format(i, item.title, item.meta['author'].name).strip()
+                nextline = '`{}.` **{}** added by **{}**'.format(i, item.title, item.meta['author'].name).strip()
             else:
                 nextline = '`{}.` **{}**'.format(i, item.title).strip()
 
@@ -1566,7 +1546,7 @@ class MusicBot(discord.Client):
 
         if not lines:
             lines.append(
-                'Nincsenek számok a listában! Adj hozzá valamit a {}play paranccsal.'.format(self.config.command_prefix))
+                'There are no songs queued! Queue something with {}play.'.format(self.config.command_prefix))
 
         message = '\n'.join(lines)
         return Response(message, delete_after=30)
@@ -1603,7 +1583,7 @@ class MusicBot(discord.Client):
         if self.user.bot:
             if channel.permissions_for(server.me).manage_messages:
                 deleted = await self.purge_from(channel, check=check, limit=search_range, before=message)
-                return Response('{} darab üzenet kitakarítva.'.format(len(deleted), 's' * bool(deleted)), delete_after=15)
+                return Response('Cleaned up {} message{}.'.format(len(deleted), 's' * bool(deleted)), delete_after=15)
 
         deleted = 0
         async for entry in self.logs_from(channel, search_range, before=message):
